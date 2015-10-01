@@ -1,0 +1,225 @@
+##  Copyright (c) Eduardo Julian. All rights reserved.
+##  This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+##  If a copy of the MPL was not distributed with this file,
+##  You can obtain one at http://mozilla.org/MPL/2.0/.
+
+(;import lux
+         (lux (control (monad #as M #refer #all))
+              (data (text #open ("text:" Text/Monoid))
+                    (list #open ("list:" List/Monad))
+                    maybe
+                    (ident #open ("ident:" Ident/Show)))
+              (meta ast
+                    lux))
+         (.. (type #open ("type:" Type/Eq Type/Show))))
+
+## [Types]
+(deftype #export Deriver
+  (-> Type (Lux AST)))
+
+## [Utils]
+(def (find-derivator name)
+  (-> Ident (Lux Deriver))
+  (do Lux/Monad
+    [name' (normalize name)]
+    (: (Lux Type)
+       (lambda [state]
+         (case (find-in-defs' name' state)
+           (#;Some def-data)
+           (case def-data
+             (#;ValueD type value)
+             (if (type:= Deriver type)
+               (#;Right [state (:! Deriver value)])
+               (#;Left ($ text:++ "Definition is not a derivator: " (ident->text name))))
+
+             _
+             (#;Left ($ text:++ "Definition is not a derivator: " (ident->text name))))
+
+           _
+           (#;Left ($ text:++ "Unknown var: " (ident->text name))))))
+    ))
+
+(def (unnamed type)
+  (-> Type Type)
+  (case type
+    (#;NamedT _ type')
+    (unnamed type')
+
+    _
+    type))
+
+(def (maybe->lux a)
+  (All [a] (-> (Maybe a) (Lux a)))
+  (case a
+    (#;Some a') (:: Lux/Monad (M;wrap a'))
+    #;None      (fail "")))
+
+## [Syntax]
+(defsyntax #export (derive [type-name symbol^] [derivator-name symbol^] [def-name simple-symbol^])
+  (do Lux/Monad
+    [type (find-type type-name)
+     derivator (find-derivator derivator-name)]
+    (lambda [state]
+      (case (derivator (unnamed type) state)
+        (#;Right [state code])
+        (#;Right [state (@list (` (def (~ (symbol$ ["" def-name])) (~ code))))])
+
+        (#;Left msg)
+        (let [_deriv (ident:show derivator-name)
+              _type (type:show type)]
+          (fail (<> "Couldn't derive #{_deriv} from type #{_type}: #{msg}")))))
+    ))
+
+## [Derivers]
+## (def #export |size|
+##   Deriver
+##   ((: (-> (, Bool AST AST) Deriver)
+##       (lambda |size| [state type]
+##          (let [[within? $fun $arg] state]
+##            (case type
+##              (#;UnivQ _ type')
+##              (if within?
+##                #;None
+##                (|size| [true $fun $arg] type'))
+
+##              (#;BoundT 1)
+##              (:: Maybe/Monad (M;wrap (` 1)))
+
+##              (#;AppT (#;BoundT 0) (#;BoundT 1))
+##              (:: Maybe/Monad (M;wrap (` (~ $fun) (~ $arg))))
+
+##              (#;DataT name)
+##              (:: Maybe/Monad (M;wrap (` 0)))
+
+##              (#;TupleT members)
+##              (do Maybe/Monad
+##                [=members (map% Lux/Monad (|size| state) members)
+##                 #let [g!+ (symbol$ ["" " op "])]]
+##                (wrap (` (let [(~ g!+) (:: IntAdd/Monoid m;+)]
+##                           ($ (~ g!+) 0 (~@ =members))))))
+
+
+##              (#;VariantT members)
+##              (do Maybe/Monad
+##                [=members (map% Maybe/Monad (|size| state) members)]
+##                (wrap (` (case (~ g!elem)
+##                           (~@ (|> =members
+##                                   (enumerate)
+##                                   (list:map (lambda [[idx member]] (@list (` ((int$ idx) ...))
+##                                                                      member)))
+##                                   (list:join)))))))
+
+##              _
+##              #;None
+##              ))))
+##    (: (, Bool AST AST) [false (symbol$ ["" " rec "]) (symbol$ ["" " x "])])))
+
+## (def #export (|size| type)
+##   Deriver
+##   (do Lux/Monad
+##     [g!fun (gensym "fun")
+##      g!arg (gensym "arg")]
+##     (maybe->lux
+##      (loop [state (: (, Bool) [false])
+##             type type]
+##        (let [[within?] state]
+##          (case type
+##            (#;UnivQ _ type')
+##            (if within?
+##              #;None
+##              (recur [true] type'))
+
+##            (#;BoundT 1)
+##            (wrap (` 1))
+           
+##            (#;AppT (#;BoundT 0) (#;BoundT 1))
+##            (wrap (` (~ g!fun) (~ g!arg)))
+
+##            (#;DataT name)
+##            (wrap (` 0))
+
+##            (#;TupleT members)
+##            (do Maybe/Monad
+##              [=members (map% Maybe/Monad (recur state) members)
+##               #let [g!+ (symbol$ ["" " op "])]]
+##              (wrap (` (let [(~ g!+) (:: IntAdd/Monoid m;+)]
+##                         ($ (~ g!+) 0 (~@ =members))))))
+           
+           
+##            (#;VariantT members)
+##            (do Maybe/Monad
+##              [=members (map% Maybe/Monad (recur state) members)]
+##              (wrap (` (case (~ g!elem)
+##                         (~@ (|> =members
+##                                 (enumerate)
+##                                 (list:map (lambda [[idx member]] (@list (` ((~ (int$ idx)) (~ g!arg)))
+##                                                                    member)))
+##                                 (list:join)))))))
+
+##            _
+##            #;None
+##            ))
+##        ))))
+
+(defpoly #export (|size| type)
+  (do Lux/Monad
+    [g!fun (gensym "fun")
+     g!arg (gensym "arg")
+     g!++ (gensym "++")]
+    (loop [state (: (, Bool) [false])
+           type type]
+      (let [[within?] state]
+        (case type
+          (#;UnivQ _ type')
+          (if within?
+            (fail "")
+            (recur [true] type'))
+
+          (#;BoundT 1)
+          (wrap (` 1))
+          
+          (#;AppT (#;BoundT 0) (#;BoundT 1))
+          (wrap (` (~ g!fun) (~ g!arg)))
+
+          (#;DataT name)
+          (wrap (` 0))
+
+          (#;TupleT members)
+          (do Lux/Monad
+            [=members (map% Lux/Monad (recur state) members)]
+            (wrap (` (let [(~ g!++) (:: IntAdd/Monoid m;++)]
+                       ($ (~ g!++) 0 (~@ =members))))))
+          
+          
+          (#;VariantT members)
+          (do Lux/Monad
+            [=members (map% Lux/Monad (recur state) members)]
+            (wrap (` (case (~ g!elem)
+                       (~@ (|> =members
+                               (enumerate)
+                               (list:map (lambda [[idx member]] (@list (` ((~ (int$ idx)) (~ g!arg)))
+                                                                  member)))
+                               (list:join)))))))
+
+          _
+          (fail "")
+          ))
+      )))
+
+(comment
+ (deftype (List a)
+   (| #Nil
+      (#Cons a (List a))))
+
+ (#Named ["lux" "List"]
+         (#UnivQ #Nil
+                 (#VariantT (@list (#NamedT ["lux" "Unit"]
+                                            (#TupleT (@list)))
+                                   (#TupleT (@list (#BoundT 1)
+                                                   (#AppT (#BoundT 0) (#BoundT 1))))))))
+
+ (deftype (list:size xs)
+   (case xs
+     #Nil 0
+     (#Cons _ xs') (i+ 1 (list:size xs'))))
+ )
