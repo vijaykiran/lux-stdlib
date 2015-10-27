@@ -2494,7 +2494,7 @@
   (, Text (List Ident)))
 
 (deftype Importation
-  (, Text (Maybe Text) Referrals (Maybe Openings)))
+  (, Text (Maybe Text) Referrals (List Openings)))
 
 (def (extract-defs defs)
   (-> (List AST) (Lux (List Text)))
@@ -2552,15 +2552,42 @@
     (fail "Not a symbol.")))
 
 (def (parse-openings tokens)
-  (-> (List AST) (Lux (, (Maybe Openings) (List AST))))
+  (-> (List AST) (Lux (, (List Openings) (List AST))))
   (case tokens
-    (\ (@list& [_ (#TagS "" "open")] [_ (#FormS (@list& [_ (#TextS prefix)] structs))] tokens'))
-    (do Lux/Monad
-      [structs' (map% Lux/Monad extract-symbol structs)]
-      (return [(#Some prefix structs') tokens']))
+    (\ (@list& [_ (#TagS "" "open")] [_ (#FormS parts)] tokens'))
+    (if (|> parts
+            (map (: (-> AST Bool)
+                    (lambda [part]
+                      (case part
+                        (\or [_ (#TextS _)] [_ (#SymbolS _)])
+                        true
 
+                        _
+                        false))))
+            (foldL (lambda [l r] (and l r)) true))
+      (let [openings (foldL (: (-> (List Openings) AST (List Openings))
+                               (lambda [openings part]
+                                 (case part
+                                   [_ (#TextS prefix)]
+                                   (@list& [prefix (@list)] openings)
+                                   
+                                   [_ (#SymbolS struct-name)]
+                                   (case openings
+                                     #Nil
+                                     (@list ["" (@list struct-name)])
+                                     
+                                     (#Cons [prefix structs] openings')
+                                     (#Cons [prefix (#Cons struct-name structs)] openings'))
+
+                                   _
+                                   openings)))
+                            (@list)
+                            parts)]
+        (return [openings tokens']))
+      (fail "Expected all parts of opening form to be of either prefix (text) or struct (symbol)."))
+    
     _
-    (return [#None tokens])))
+    (return [(@list) tokens])))
 
 (def (decorate-imports super-name tokens)
   (-> Text (List AST) (Lux (List AST)))
@@ -2599,8 +2626,8 @@
                               extra (decorate-imports m-name extra)
                               sub-imports (parse-imports extra)]
                              (wrap (case [referral alias openings]
-                                     [#Nothing #None #None] sub-imports
-                                     _                      (@list& [m-name alias referral openings] sub-imports))))
+                                     [#Nothing #None #Nil] sub-imports
+                                     _                     (@list& [m-name alias referral openings] sub-imports))))
 
                            _
                            (fail "Wrong syntax for import"))))
@@ -3006,18 +3033,15 @@
                                         #Nothing
                                         (wrap (@list)))
                                  #let [openings (: (List AST)
-                                                   (case m-openings
-                                                     #None
-                                                     (@list)
-
-                                                     (#Some prefix structs)
-                                                     (map (: (-> Ident AST)
-                                                             (lambda [struct]
-                                                               (let [[_ name] struct]
-                                                                 (` (open (~ (symbol$ [m-name name])) (~ (text$ prefix)))))))
-                                                          structs)))]]
+                                                   (map (join-map (: (-> (, Text (List Ident)) (List AST))
+                                                                     (lambda [[prefix structs]]
+                                                                       (map (lambda [[_ name]]
+                                                                              (` (open (~ (symbol$ [m-name name])) (~ (text$ prefix)))))
+                                                                            structs))))
+                                                        m-openings))]]
                                 (wrap ($ list:++
-                                        (: (List AST) (@list (` (;_lux_import (~ (text$ m-name))))))
+                                        (: (List AST)
+                                           (@list (` (;_lux_import (~ (text$ m-name))))))
                                         (: (List AST)
                                            (case m-alias
                                              #None         (@list)
