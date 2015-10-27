@@ -355,16 +355,19 @@
      (do Lux/Monad
        [[vars var-types var-rebinds arg-classes] (prepare-args args)
         g!self (gensym "self")
-        #let [included-self (: (List AST)
-                               (if <use-self?>
-                                 (@list g!self)
-                                 (@list)))
+        #let [[included-self included-self-type] (: (, (List AST) (List AST))
+                                                    (if <use-self?>
+                                                      [(@list g!self) (@list (` (^ (~ (symbol$ ["" class])))))]
+                                                      [(@list) (@list)]))
+              
               [body return-type] (gen-expected-output expected-output
                                                       (` (<op> (~ (text$ class)) (~ (text$ method)) [(~@ (map text$ arg-classes))] (~@ included-self) [(~@ vars)])))
               [body return-type] (if unsafe?
                                    [(` (try (~ body))) (` (Either Text (~ return-type)))]
                                    [body return-type])]]
-       (wrap (@list (` (: (-> (, (~@ var-types)) (^ (~ (symbol$ ["" class]))) (~ return-type))
+       (wrap (@list (` (: (-> (, (~@ var-types))
+                              (~@ included-self-type)
+                              (~ return-type))
                           (lambda [[(~@ vars)] (~@ included-self)]
                             (let [(~@ var-rebinds)]
                               (~ body)))))))

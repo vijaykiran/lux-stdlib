@@ -242,12 +242,12 @@
 
 (def #export (||^ ps tokens)
   (All [a]
-    (-> (List (Parser a)) (Parser (Maybe a))))
+    (-> (List (Parser a)) (Parser a)))
   (case ps
     #;Nil            #;None
     (#;Cons [p ps']) (case (p tokens)
                        #;None               (||^ ps' tokens)
-                       (#;Some [tokens' x]) (#;Some [tokens' (#;Some x)]))
+                       (#;Some [tokens' x]) (#;Some [tokens' x]))
     ))
 
 (def #export (end^ tokens)
