@@ -2581,7 +2581,7 @@
 
                                    _
                                    openings)))
-                            (@list)
+                            (: (List Openings) (@list))
                             parts)]
         (return [openings tokens']))
       (fail "Expected all parts of opening form to be of either prefix (text) or struct (symbol)."))
@@ -3032,13 +3032,11 @@
 
                                         #Nothing
                                         (wrap (@list)))
-                                 #let [openings (: (List AST)
-                                                   (map (join-map (: (-> (, Text (List Ident)) (List AST))
-                                                                     (lambda [[prefix structs]]
-                                                                       (map (lambda [[_ name]]
-                                                                              (` (open (~ (symbol$ [m-name name])) (~ (text$ prefix)))))
-                                                                            structs))))
-                                                        m-openings))]]
+                                 #let [openings (join-map (: (-> Openings (List AST))
+                                                             (lambda [[prefix structs]]
+                                                               (map (lambda [[_ name]] (` (open (~ (symbol$ [m-name name])) (~ (text$ prefix)))))
+                                                                    structs)))
+                                                          m-openings)]]
                                 (wrap ($ list:++
                                         (: (List AST)
                                            (@list (` (;_lux_import (~ (text$ m-name))))))
