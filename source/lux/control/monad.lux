@@ -49,7 +49,8 @@
 (defmacro #export (do tokens state)
   (case tokens
     (#;Cons monad (#;Cons [_ (#;TupleS bindings)] (#;Cons body #;Nil)))
-    (let [g!map (: AST [["" -1 -1] (#;SymbolS ["" " map "])])
+    (let [g!% (: AST [["" -1 -1] (#;SymbolS ["" "%"])])
+          g!map (: AST [["" -1 -1] (#;SymbolS ["" " map "])])
           g!join (: AST [["" -1 -1] (#;SymbolS ["" " join "])])
           body' (foldL (: (-> AST (, AST AST) AST)
                           (lambda [body' binding]
@@ -63,9 +64,11 @@
                                 ))))
                        body
                        (reverse (as-pairs bindings)))]
-      (#;Right [state (#;Cons (` (case (~ monad)
-                                   {#_functor {#F;map (~ g!map)} #wrap (~ (' wrap)) #join (~ g!join)}
-                                   (~ body')))
+      (#;Right [state (#;Cons (` (;_lux_case (~ monad)
+                                             (~ g!%)
+                                             (;_lux_case (~ g!%)
+                                                         {#_functor {#F;map (~ g!map)} #wrap (~ (' wrap)) #join (~ g!join)}
+                                                         (~ body'))))
                               #;Nil)]))
 
     _

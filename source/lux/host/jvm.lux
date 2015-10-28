@@ -6,25 +6,24 @@
 (;import lux
          (lux (control (monoid #as m)
                        (functor #as F)
-                       (monad #as M #refer (#only do seq%))
+                       (monad #as M #refer (#only do map% seq%))
                        (enum #as E))
               (codata function)
-              (data (list #refer #all #open ("" List/Functor List/Fold))
+              (data (list #refer #all #open ("" List/Functor List/Fold
+                                             "list:" List/Monad))
                     (number/int #refer #all #open ("i:" Int/Ord Int/Number))
                     maybe
                     tuple
-                    (text #open ("text:" Text/Monoid)))
+                    (text #refer (#only <>) #open ("text:" Text/Monoid Text/Eq)))
               (meta lux
                     ast
                     syntax)))
 
-(open List/Monad "list:")
-
 ## [Types]
 (defsyntax #export (Array [dimensions (?^ nat^)] type)
-  (emit (@list (foldL (lambda [inner _] (` (#;DataT "#Array" (@list (~ inner)))))
-                      type
-                      (repeat (? 1 dimensions) [])))))
+  (:: Lux/Monad (wrap (@list (foldL (lambda [inner _] (` (#;DataT "#Array" (@list (~ inner)))))
+                                    type
+                                    (repeat (? 1 dimensions) []))))))
 
 ## [Utils]
 ## Types
@@ -82,7 +81,6 @@
     (\template [<prim> <class>]
      [[<prim> #;Nil]
       (' (;^ <class>))])
-
     [["boolean" java.lang.Boolean]
      ["byte"    java.lang.Byte]
      ["short"   java.lang.Short]
@@ -92,10 +90,13 @@
      ["double"  java.lang.Double]
      ["char"    java.lang.Character]]
     
-    ["void" #;Nil] (` ;Unit)
+    ["void" #;Nil]
+    (` ;Unit)
     
     [name params]
-    (` (^ (~ (symbol$ ["" name])) (~@ (map class->type params))))))
+    (if (text:= "Array" name)
+      (` (^ (~ (symbol$ ["" "#Array"])) (~@ (map class->type params))))
+      (` (^ (~ (symbol$ ["" name])) (~@ (map class->type params)))))))
 
 (def (prepare-args args)
   (-> (List ExpectedInput) (Lux (, (List AST) (List AST) (List AST) (List JvmType))))
@@ -117,6 +118,29 @@
            var-rebinds (map second pairings)
            arg-classes (map second args)]]
     (wrap [vars var-types (list:join var-rebinds) arg-classes])))
+
+(def (stack-trace->text trace)
+  (-> StackTrace Text)
+  (let [size (_jvm_arraylength (:! StackTrace trace))
+        idxs (E;range Int/Enum 0 (i:+ -1 size))]
+    (|> idxs
+        (map (: (-> Int Text)
+                (lambda [idx]
+                  (_jvm_invokevirtual "java.lang.Object" "toString" [] (_jvm_aaload trace idx) []))))
+        (interpose "\n")
+        (foldL text:++ "")
+        )))
+
+(def (get-stack-trace t)
+  (-> (^ java.lang.Throwable) StackTrace)
+  (_jvm_invokevirtual "java.lang.Throwable" "getStackTrace" [] t []))
+
+(def #export (throwable->text t)
+  (-> (^ java.lang.Throwable) Text)
+  ($ text:++
+    (_jvm_invokevirtual "java.lang.Object" "toString" [] t [])
+    "\n"
+    (|> t get-stack-trace stack-trace->text)))
 
 ## Parsers
 (def jvm-type^
@@ -209,23 +233,63 @@
   (form^ (&^ member-decl^
              method-def'^)))
 
+(do-template [<name> <tag>]
+  [(def <name> (tag?^ ["" <tag>]))]
+
+  [optional-tag?^ "?"]
+  [ex-tag?^       "!"]
+  [unsafe?^       "unsafe"])
+
 (def exp-input^
   (Parser ExpectedInput)
-  (&^ (tag?^ ["" "?"])
+  (&^ optional-tag?^
       jvm-type^))
 
 (def exp-output^
   (Parser ExpectedOutput)
   (do Parser/Monad
-    [ex? (tag?^ ["" "!"])
-     opt? (tag?^ ["" "?"])
+    [ex? ex-tag?^
+     opt? optional-tag?^
      return jvm-type^]
     (wrap [ex? opt? return])))
 
 ## Generators
-(def gen-simple-class
-  (-> JvmType AST)
-  (. text$ first))
+(def (gen-simple-class (\slots [#type-name #type-params]))
+  (-> JvmType (Lux AST))
+  (using Lux/Monad
+    (if (text:= "Array" type-name)
+      (case type-params
+        (#;Cons [param _] #;Nil)
+        (cond (text:= "boolean" param)
+              (wrap (text$ "[Z"))
+
+              (text:= "byte" param)
+              (wrap (text$ "[B"))
+
+              (text:= "short" param)
+              (wrap (text$ "[S"))
+
+              (text:= "int" param)
+              (wrap (text$ "[I"))
+
+              (text:= "long" param)
+              (wrap (text$ "[J"))
+
+              (text:= "float" param)
+              (wrap (text$ "[F"))
+
+              (text:= "double" param)
+              (wrap (text$ "[D"))
+
+              (text:= "char" param)
+              (wrap (text$ "[D"))
+
+              ## default
+              (wrap (text$ (<> "[L#{param};"))))
+        
+        _
+        (fail "Array must have 1 argument."))
+      (wrap (text$ type-name)))))
 
 (def (gen-annotation-param [name value])
   (-> AnnotationParam (, AST AST))
@@ -237,35 +301,47 @@
       (~ (record$ (map gen-annotation-param params))))))
 
 (def (gen-method-decl [[name modifiers anns] [inputs output exs]])
-  (-> (, MemberDecl MethodDecl) AST)
-  (` ((~ (text$ name))
-      [(~@ (map text$ modifiers))]
-      [(~@ (map gen-annotation anns))]
-      [(~@ (map gen-simple-class exs))]
-      [(~@ (map gen-simple-class inputs))]
-      (~ (gen-simple-class output)))))
+  (-> (, MemberDecl MethodDecl) (Lux AST))
+  (do Lux/Monad
+    [=exs (map% % gen-simple-class exs)
+     =inputs (map% % gen-simple-class inputs)
+     =output (gen-simple-class output)]
+    (wrap (` ((~ (text$ name))
+              [(~@ (map text$ modifiers))]
+              [(~@ (map gen-annotation anns))]
+              [(~@ =exs)]
+              [(~@ =inputs)]
+              (~ =output))))))
 
 (def (gen-field-decl [[name modifiers anns] class])
-  (-> (, MemberDecl FieldDecl) AST)
-  (` ((~ (text$ name))
-      [(~@ (map text$ modifiers))]
-      [(~@ (map gen-annotation anns))]
-      (~ (gen-simple-class class))
-      )))
+  (-> (, MemberDecl FieldDecl) (Lux AST))
+  (do Lux/Monad
+    [=class (gen-simple-class class)]
+    (wrap (` ((~ (text$ name))
+              [(~@ (map text$ modifiers))]
+              [(~@ (map gen-annotation anns))]
+              (~ =class)
+              )))))
 
 (def (gen-arg-decl [name type])
-  (-> ArgDecl AST)
-  (form$ (@list (symbol$ ["" name]) (gen-simple-class type))))
+  (-> ArgDecl (Lux AST))
+  (do Lux/Monad
+    [=type (gen-simple-class type)]
+    (wrap (form$ (@list (symbol$ ["" name]) =type)))))
 
 (def (gen-method-def [[name modifiers anns] [inputs output body exs]])
-  (-> (, MemberDecl MethodDef) AST)
-  (` ((~ (text$ name))
-      [(~@ (map text$ modifiers))]
-      [(~@ (map gen-annotation anns))]
-      [(~@ (map gen-simple-class exs))]
-      [(~@ (map gen-arg-decl inputs))]
-      (~ (gen-simple-class output))
-      (~ body))))
+  (-> (, MemberDecl MethodDef) (Lux AST))
+  (do Lux/Monad
+    [=exs (map% % gen-simple-class exs)
+     =inputs (map% % gen-arg-decl inputs)
+     =output (gen-simple-class output)]
+    (wrap (` ((~ (text$ name))
+              [(~@ (map text$ modifiers))]
+              [(~@ (map gen-annotation anns))]
+              [(~@ =exs)]
+              [(~@ =inputs)]
+              (~ =output)
+              (~ body))))))
 
 (def (gen-expected-output [ex? opt? output] body)
   (-> ExpectedOutput AST (, AST AST))
@@ -280,57 +356,45 @@
                       [body type])]
     [body type]))
 
-## [Functions]
-(def (stack-trace->text trace)
-  (-> StackTrace Text)
-  (let [size (_jvm_arraylength (:! StackTrace trace))
-        idxs (E;range Int/Enum 0 (i:+ -1 size))]
-    (|> idxs
-        (map (: (-> Int Text)
-                (lambda [idx]
-                  (_jvm_invokevirtual "java.lang.Object" "toString" [] (_jvm_aaload trace idx) []))))
-        (interpose "\n")
-        (foldL text:++ "")
-        )))
-
-(def (get-stack-trace t)
-  (-> (^ java.lang.Throwable) StackTrace)
-  (_jvm_invokevirtual "java.lang.Throwable" "getStackTrace" [] t []))
-
-(def #export (throwable->text t)
-  (-> (^ java.lang.Throwable) Text)
-  ($ text:++
-    (_jvm_invokevirtual "java.lang.Object" "toString" [] t [])
-    "\n"
-    (|> t get-stack-trace stack-trace->text)))
-
 ## [Syntax]
 (defsyntax #export (defclass [name local-symbol^] [super jvm-type^] [interfaces (tuple^ (*^ jvm-type^))]
                      [annotations annotations^]
                      [fields (*^ field-decl^)]
                      [methods (*^ method-def^)])
-  (emit (@list (` (;_jvm_class (~ (text$ name)) (~ (gen-simple-class super))
-                               [(~@ (map gen-simple-class interfaces))]
-                               [(~@ (map gen-annotation annotations))]
-                               [(~@ (map gen-field-decl fields))]
-                               [(~@ (map gen-method-def methods))])))))
+  (do Lux/Monad
+    [=super (gen-simple-class super)
+     =interfaces (map% % gen-simple-class interfaces)
+     =fields (map% % gen-field-decl fields)
+     =methods (map% % gen-method-def methods)]
+    (wrap (@list (` (;_jvm_class (~ (text$ name)) (~ =super)
+                                 [(~@ =interfaces)]
+                                 [(~@ (map gen-annotation annotations))]
+                                 [(~@ =fields)]
+                                 [(~@ =methods)]))))))
 
 (defsyntax #export (definterface [name local-symbol^] [supers (tuple^ (*^ jvm-type^))]
                      [annotations annotations^]
                      [members (*^ method-decl^)])
-  (emit (@list (` (;_jvm_interface (~ (text$ name)) [(~@ (map gen-simple-class supers))]
-                                   [(~@ (map gen-annotation annotations))]
-                                   (~@ (map gen-method-decl members)))))))
+  (do Lux/Monad
+    [=supers (map% % gen-simple-class supers)
+     =members (map% % gen-method-decl members)]
+    (wrap (@list (` (;_jvm_interface (~ (text$ name)) [(~@ =supers)]
+                                     [(~@ (map gen-annotation annotations))]
+                                     (~@ =members)))))))
 
 (defsyntax #export (object [super jvm-type^] [interfaces (tuple^ (*^ jvm-type^))]
                            [methods (*^ method-def^)])
-  (emit (@list (` (;_jvm_anon-class (~ (gen-simple-class super))
-                                    [(~@ (map gen-simple-class interfaces))]
-                                    [(~@ (map gen-method-def methods))])))))
+  (do Lux/Monad
+    [=super (gen-simple-class super)
+     =interfaces (map% % gen-simple-class interfaces)
+     =methods (map% % gen-method-def methods)]
+    (wrap (@list (` (;_jvm_anon-class (~ =super)
+                                      [(~@ =interfaces)]
+                                      [(~@ =methods)]))))))
 
 (defsyntax #export (program [args symbol^] body)
-  (emit (@list (` (;_jvm_program (~ (symbol$ args))
-                                 (~ body))))))
+  (:: Lux/Monad (wrap (@list (` (;_jvm_program (~ (symbol$ args))
+                                               (~ body)))))))
 
 (defsyntax #export (??? expr)
   (do Lux/Monad
@@ -341,32 +405,43 @@
                         (#;Some (~ g!temp)))))))))
 
 (defsyntax #export (try expr)
-  (emit (@list (` (;_jvm_try (#;Right (~ expr))
-                             (~ (' (_jvm_catch "java.lang.Exception" e
-                                               (#;Left (throwable->text e))))))))))
+  (:: Lux/Monad (wrap (@list (` (;_jvm_try (#;Right (~ expr))
+                                           (~ (' (_jvm_catch "java.lang.Exception" e
+                                                             (#;Left (throwable->text e)))))))))))
 
 (defsyntax #export (instance? [class jvm-type^] obj)
-  (emit (@list (` (;_jvm_instanceof (~ (gen-simple-class class)) (~ obj))))))
+  (do Lux/Monad
+    [=class (gen-simple-class class)]
+    (wrap (@list (` (;_jvm_instanceof (~ =class) (~ obj)))))))
 
 (defsyntax #export (locking lock body)
   (do Lux/Monad
     [g!lock (gensym "")
      g!body (gensym "")
      g!_ (gensym "")]
-    (emit (@list (` (let [(~ g!lock) (~ lock)
+    (wrap (@list (` (let [(~ g!lock) (~ lock)
                           (~ g!_) (;_jvm_monitorenter (~ g!lock))
                           (~ g!body) (~ body)
                           (~ g!_) (;_jvm_monitorexit (~ g!lock))]
                       (~ g!body)))))
     ))
 
-(defsyntax #export (null? obj)
-  (emit (@list (` (;_jvm_null? (~ obj))))))
+(defsyntax #export (defer [ops (tuple^ (*^ id^))] body)
+  (do Lux/Monad
+    [g!body (gensym "")]
+    (wrap (@list (` (let [(~ g!body) (~ body)]
+                      (exec (~@ ops)
+                        (~ g!body))))))))
 
-(defsyntax #export (new$ [class jvm-type^] [args (tuple^ (*^ exp-input^))] [unsafe? (tag?^ ["" "unsafe"])])
+(defsyntax #export (null? obj)
+  (:: Lux/Monad (wrap (@list (` (;_jvm_null? (~ obj)))))))
+
+(defsyntax #export (new$ [class jvm-type^] [args (tuple^ (*^ exp-input^))] [unsafe? unsafe?^])
   (do Lux/Monad
     [[vars var-types var-rebinds arg-classes] (prepare-args args)
-     #let [new-expr (` (;_jvm_new (~ (gen-simple-class class)) [(~@ (map gen-simple-class arg-classes))] [(~@ vars)]))
+     =class (gen-simple-class class)
+     =arg-classes (map% % gen-simple-class arg-classes)
+     #let [new-expr (` (;_jvm_new (~ =class) [(~@ =arg-classes)] [(~@ vars)]))
            return-type (class->type class)
            [new-expr return-type] (if unsafe?
                                     [(` (try (~ new-expr))) (` (Either Text (~ return-type)))]
@@ -378,17 +453,19 @@
 
 (do-template [<name> <op> <use-self?>]
   [(defsyntax #export (<name> [class jvm-type^] [method local-symbol^] [args (tuple^ (*^ exp-input^))]
-                              [expected-output exp-output^] [unsafe? (tag?^ ["" "unsafe"])])
+                              [expected-output exp-output^] [unsafe? unsafe?^])
      (do Lux/Monad
        [[vars var-types var-rebinds arg-classes] (prepare-args args)
         g!self (gensym "self")
+        =class (gen-simple-class class)
+        =arg-classes (map% % gen-simple-class arg-classes)
         #let [[included-self included-self-type] (: (, (List AST) (List AST))
                                                     (if <use-self?>
                                                       [(@list g!self) (@list (class->type class))]
                                                       [(@list) (@list)]))
               
               [body return-type] (gen-expected-output expected-output
-                                                      (` (<op> (~ (gen-simple-class class)) (~ (text$ method)) [(~@ (map gen-simple-class arg-classes))] (~@ included-self) [(~@ vars)])))
+                                                      (` (<op> (~ =class) (~ (text$ method)) [(~@ =arg-classes)] (~@ included-self) [(~@ vars)])))
               [body return-type] (if unsafe?
                                    [(` (try (~ body))) (` (Either Text (~ return-type)))]
                                    [body return-type])]]

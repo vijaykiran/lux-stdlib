@@ -26,10 +26,10 @@
                                 x [(_jvm_l2i idx)]))
     #;None))
 
-(def #export (contains? x y)
+(def #export (contains? subtext text)
   (-> Text Text Bool)
   (_jvm_invokevirtual "java.lang.String" "contains" ["java.lang.CharSequence"]
-                      x [y]))
+                      text [subtext]))
 
 (do-template [<name> <method>]
   [(def #export (<name> x)

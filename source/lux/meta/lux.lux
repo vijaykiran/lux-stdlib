@@ -175,12 +175,6 @@
   (#;Right [(update@ #;seed (i+ 1) state)
             (symbol$ ["" ($ text:++ "__gensym__" prefix (:: I;Int/Show (show (get@ #;seed state))))])]))
 
-(def #export (emit datum)
-  (All [a]
-    (-> a (Lux a)))
-  (lambda [state]
-    (#;Right [state datum])))
-
 (def #export (fail msg)
   (All [a]
     (-> Text (Lux a)))
