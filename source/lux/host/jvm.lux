@@ -126,19 +126,19 @@
     (|> idxs
         (map (: (-> Int Text)
                 (lambda [idx]
-                  (_jvm_invokevirtual "java.lang.Object" "toString" [] (_jvm_aaload trace idx) []))))
+                  (_jvm_invokevirtual ("java.lang.Object" []) "toString" [] (_jvm_aaload trace idx) []))))
         (interpose "\n")
         (foldL text:++ "")
         )))
 
 (def (get-stack-trace t)
   (-> (^ java.lang.Throwable) StackTrace)
-  (_jvm_invokevirtual "java.lang.Throwable" "getStackTrace" [] t []))
+  (_jvm_invokevirtual ("java.lang.Throwable" []) "getStackTrace" [] t []))
 
 (def #export (throwable->text t)
   (-> (^ java.lang.Throwable) Text)
   ($ text:++
-    (_jvm_invokevirtual "java.lang.Object" "toString" [] t [])
+    (_jvm_invokevirtual ("java.lang.Object" []) "toString" [] t [])
     "\n"
     (|> t get-stack-trace stack-trace->text)))
 
@@ -291,6 +291,13 @@
         (fail "Array must have 1 argument."))
       (wrap (text$ type-name)))))
 
+(def (gen-generic-class (\slots [#type-name #type-params]))
+  (-> JvmType AST)
+  ## (using Lux/Monad
+  ##   (wrap (form$ (@list (text$ type-name)
+  ##                       (tuple$ (map gen-generic-class type-params))))))
+  (` ((~ (text$ type-name)) [(~@ (map gen-generic-class type-params))])))
+
 (def (gen-annotation-param [name value])
   (-> AnnotationParam (, AST AST))
   [(text$ name) value])
@@ -439,7 +446,7 @@
 (defsyntax #export (new$ [class jvm-type^] [args (tuple^ (*^ exp-input^))] [unsafe? unsafe?^])
   (do Lux/Monad
     [[vars var-types var-rebinds arg-classes] (prepare-args args)
-     =class (gen-simple-class class)
+     #let [=class (gen-generic-class class)]
      =arg-classes (map% % gen-simple-class arg-classes)
      #let [new-expr (` (;_jvm_new (~ =class) [(~@ =arg-classes)] [(~@ vars)]))
            return-type (class->type class)
@@ -457,7 +464,7 @@
      (do Lux/Monad
        [[vars var-types var-rebinds arg-classes] (prepare-args args)
         g!self (gensym "self")
-        =class (gen-simple-class class)
+        #let [=class (gen-generic-class class)]
         =arg-classes (map% % gen-simple-class arg-classes)
         #let [[included-self included-self-type] (: (, (List AST) (List AST))
                                                     (if <use-self?>

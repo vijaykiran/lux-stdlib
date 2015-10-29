@@ -685,7 +685,7 @@
 
 (def'' (text:= x y)
   (#LambdaT Text (#LambdaT Text Bool))
-  (_jvm_invokevirtual "java.lang.Object" "equals" ["java.lang.Object"]
+  (_jvm_invokevirtual ("java.lang.Object" []) "equals" ["java.lang.Object"]
                       x [y]))
 
 (def'' (get-rep key env)
@@ -1117,7 +1117,7 @@
   (_lux_case tokens
     (#Cons monad (#Cons [_ (#TupleS bindings)] (#Cons body #Nil)))
     (let' [g!wrap (symbol$ ["" "wrap"])
-           g!bind (symbol$ ["" "12bind34"])
+           g!bind (symbol$ ["" " bind "])
            body' (foldL (_lux_: (-> AST (, AST AST) AST)
                                 (lambda' [body' binding]
                                          (let' [[var value] binding]
@@ -1195,7 +1195,7 @@
 
 (def''' (text:++ x y)
   (-> Text Text Text)
-  (_jvm_invokevirtual "java.lang.String" "concat" ["java.lang.String"]
+  (_jvm_invokevirtual ("java.lang.String" []) "concat" ["java.lang.String"]
                       x [y]))
 
 (def''' (ident->text ident)
@@ -1540,7 +1540,7 @@
 
 (def''' (->text x)
   (-> (^ java.lang.Object) Text)
-  (_jvm_invokevirtual "java.lang.Object" "toString" [] x []))
+  (_jvm_invokevirtual ("java.lang.Object" []) "toString" [] x []))
 
 (def''' (find-macro' modules current-module module name)
   (-> ($' List (, Text ($' Module Compiler)))
@@ -1614,6 +1614,23 @@
 
     (#Cons [x xs'])
     (@list& x sep (interpose sep xs'))))
+
+(def''' (macro-expand-once token)
+  (-> AST ($' Lux ($' List AST)))
+  (_lux_case token
+    [_ (#FormS (#Cons [_ (#SymbolS macro-name)] args))]
+    (do Lux/Monad
+      [macro-name' (normalize macro-name)
+       ?macro (find-macro macro-name')]
+      (_lux_case ?macro
+        (#Some macro)
+        (macro args)
+        
+        #None
+        (return (@list token))))
+
+    _
+    (return (@list token))))
 
 (def''' (macro-expand token)
   (-> AST ($' Lux ($' List AST)))
@@ -2038,7 +2055,7 @@
                                    (if (symbol? arg)
                                      (` (;_lux_lambda (~ g!blank) (~ arg) (~ body')))
                                      (` (;_lux_lambda (~ g!blank) (~ g!blank)
-                                                      (case (~ g!blank) (~ arg) (~ body')))))))
+                                                 (case (~ g!blank) (~ arg) (~ body')))))))
                        body
                        (reverse tail))]
       (return (@list (if (symbol? head)
@@ -2196,22 +2213,22 @@
 
 (def (last-index-of part text)
   (-> Text Text Int)
-  (_jvm_i2l (_jvm_invokevirtual "java.lang.String" "lastIndexOf" ["java.lang.String"]
+  (_jvm_i2l (_jvm_invokevirtual ("java.lang.String" []) "lastIndexOf" ["java.lang.String"]
                                 text [part])))
 
 (def (index-of part text)
   (-> Text Text Int)
-  (_jvm_i2l (_jvm_invokevirtual "java.lang.String" "indexOf" ["java.lang.String"]
+  (_jvm_i2l (_jvm_invokevirtual ("java.lang.String" []) "indexOf" ["java.lang.String"]
                                 text [part])))
 
 (def (substring1 idx text)
   (-> Int Text Text)
-  (_jvm_invokevirtual "java.lang.String" "substring" ["int"]
+  (_jvm_invokevirtual ("java.lang.String" []) "substring" ["int"]
                       text [(_jvm_l2i idx)]))
 
 (def (substring2 idx1 idx2 text)
   (-> Int Int Text Text)
-  (_jvm_invokevirtual "java.lang.String" "substring" ["int" "int"]
+  (_jvm_invokevirtual ("java.lang.String" []) "substring" ["int" "int"]
                       text [(_jvm_l2i idx1) (_jvm_l2i idx2)]))
 
 (def (split-module-contexts module)
@@ -3263,7 +3280,7 @@
           (return (@list (` ((: (-> (~@ (map type->ast init-types))
                                     (~ (type->ast expected)))
                                 (lambda (~ (symbol$ ["" "recur"])) [(~@ vars)]
-                                        (~ body)))
+                                   (~ body)))
                              (~@ inits))))))
         (do Lux/Monad
           [aliases (map% Lux/Monad
@@ -3323,3 +3340,64 @@
 
   [inc 1]
   [dec -1])
+
+(def (place-tokens label tokens target)
+  (-> Text (List AST) AST (Maybe (List AST)))
+  (case target
+    (\or [_ (#BoolS _)] [_ (#IntS _)] [_ (#RealS _)] [_ (#CharS _)] [_ (#TextS _)] [_ (#TagS _)])
+    (#Some (@list target))
+
+    [_ (#SymbolS [prefix name])]
+    (if (and (text:= "" prefix)
+             (text:= label name))
+      (#Some tokens)
+      (#Some (@list target)))
+
+    (\template [<tag> <ctor>]
+     [[_ (<tag> elems)]
+      (do Maybe/Monad
+        [placements (map% Maybe/Monad (place-tokens label tokens) elems)]
+        (wrap (@list (<ctor> (list:join placements)))))])
+    [[#TupleS tuple$]
+     [#FormS  form$]]
+
+    [_ (#RecordS pairs)]
+    (do Maybe/Monad
+      [=pairs (map% Maybe/Monad
+                    (: (-> (, AST AST) (Maybe (, AST AST)))
+                       (lambda [[slot value]]
+                         (do Maybe/Monad
+                           [slot' (place-tokens label tokens slot)
+                            value' (place-tokens label tokens value)]
+                           (case [slot' value']
+                             (\ [(@list =slot) (@list =value)])
+                             (wrap [=slot =value])
+
+                             _
+                             #None))))
+                    pairs)]
+      (wrap (@list (record$ =pairs))))
+    ))
+
+(defmacro #export (let% tokens)
+  (case tokens
+    (\ (@list& [_ (#TupleS bindings)] bodies))
+    (case bindings
+      (\ (@list& [_ (#SymbolS ["" var-name])] macro-expr bindings'))
+      (do Lux/Monad
+        [expansion (macro-expand-once macro-expr)]
+        (case (place-tokens var-name expansion (` (;let% [(~@ bindings')] (~@ bodies))))
+          (#Some output)
+          (wrap output)
+
+          _
+          (fail "[let%] Improper macro expansion.")))
+
+      #Nil
+      (return bodies)
+
+      _
+      (fail "Wrong syntax for let%"))
+
+    _
+    (fail "Wrong syntax for let%")))

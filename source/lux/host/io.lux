@@ -16,7 +16,7 @@
 (do-template [<name> <method> <type> <class>]
   [(def #export (<name> x)
      (-> <type> (IO (,)))
-     (@io (_jvm_invokevirtual "java.io.PrintStream" <method> [<class>]
+     (@io (_jvm_invokevirtual ("java.io.PrintStream" []) <method> [<class>]
                               (_jvm_getstatic "java.lang.System" "out") [x])))]
 
   [write-char "print"   Char "char"]
@@ -28,16 +28,16 @@
   [(def #export <name>
      (IO (Maybe <type>))
      (let [in (_jvm_getstatic "java.lang.System" "in")
-           reader (_jvm_new "java.io.InputStreamReader" ["java.io.InputStream"] [in])
-           buff-reader (_jvm_new "java.io.BufferedReader" ["java.io.Reader"] [reader])]
+           reader (_jvm_new ("java.io.InputStreamReader" []) ["java.io.InputStream"] [in])
+           buff-reader (_jvm_new ("java.io.BufferedReader" []) ["java.io.Reader"] [reader])]
        (@io (let [output (: (Either Text <type>) (try <op>))
-                  _close (: (Either Text (,)) (try (_jvm_invokeinterface "java.io.Closeable" "close" [] buff-reader [])))]
+                  _close (: (Either Text (,)) (try (_jvm_invokeinterface ("java.io.Closeable" []) "close" [] buff-reader [])))]
               (case [output _close]
                 (\or [(#;Left _) _] [_ (#;Left _)]) #;None
                 [(#;Right input) (#;Right _)]       (#;Some input))))))]
 
-  [read-char Char (_jvm_i2c (_jvm_invokevirtual "java.io.BufferedReader" "read" [] buff-reader []))]
-  [read-line Text (_jvm_invokevirtual "java.io.BufferedReader" "readLine" [] buff-reader [])]
+  [read-char Char (_jvm_i2c (_jvm_invokevirtual ("java.io.BufferedReader" []) "read" [] buff-reader []))]
+  [read-line Text (_jvm_invokevirtual ("java.io.BufferedReader" []) "readLine" [] buff-reader [])]
   )
 
 ## [Syntax]
@@ -53,7 +53,7 @@
                             (let [g!res-name (symbol$ ["" res-name])]
                               (` (let [(~ g!res-name) (~ res-value)
                                        (~ g!output) (~ body)]
-                                   (exec (;_jvm_invokeinterface "java.io.Closeable" "close" [] (~ g!res-name) [])
+                                   (exec (;_jvm_invokeinterface ("java.io.Closeable" []) "close" [] (~ g!res-name) [])
                                      (~ g!output)))))))
                        body
                        (reverse bindings))]]

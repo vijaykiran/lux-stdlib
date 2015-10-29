@@ -117,6 +117,23 @@
     _
     (:: Lux/Monad (wrap ident))))
 
+(def #export (macro-expand-once syntax)
+  (-> AST (Lux (List AST)))
+  (case syntax
+    [_ (#;FormS (#;Cons [[_ (#;SymbolS macro-name)] args]))]
+    (do Lux/Monad
+      [macro-name' (normalize macro-name)
+       ?macro (find-macro macro-name')]
+      (case ?macro
+        (#;Some macro)
+        (macro args)
+        
+        #;None
+        (:: Lux/Monad (wrap (@list syntax)))))
+
+    _
+    (:: Lux/Monad (wrap (@list syntax)))))
+
 (def #export (macro-expand syntax)
   (-> AST (Lux (List AST)))
   (case syntax

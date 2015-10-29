@@ -10,8 +10,10 @@
                       (ord #as O)
                       (enum #as EN)
                       (bounded #as B)
-                      (show #as S)))
+                      (show #as S)
+                      (read #as R)))
 
+## [Exports]
 ## [Structures]
 ## Number
 (do-template [<name> <type> <+> <-> <*> </> <%> <=> <<> <from> <0> <1> <-1>]
@@ -89,5 +91,17 @@
      (def (show x)
        <body>))]
 
-  [ Int/Show  Int (_jvm_invokevirtual "java.lang.Object" "toString" [] x [])]
+  [ Int/Show  Int (_jvm_invokevirtual ("java.lang.Object" []) "toString" [] x [])]
   )
+
+## Read
+(defstruct #export Int/Read (R;Read Int)
+  (def (read input)
+    (_jvm_try (#;Some (_jvm_invokestatic ("java.lang.Long" []) "parseLong" ["java.lang.String"] [input]))
+              (_jvm_catch "java.lang.Exception" e
+                          #;None))))
+
+## [Functions]
+(def #export (real->int n)
+  (-> Real Int)
+  (_jvm_d2l n))
