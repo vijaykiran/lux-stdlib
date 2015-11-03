@@ -433,13 +433,6 @@
                       (~ g!body)))))
     ))
 
-(defsyntax #export (defer [ops (tuple^ (*^ id^))] body)
-  (do Lux/Monad
-    [g!body (gensym "")]
-    (wrap (@list (` (let [(~ g!body) (~ body)]
-                      (exec (~@ ops)
-                        (~ g!body))))))))
-
 (defsyntax #export (null? obj)
   (:: Lux/Monad (wrap (@list (` (;_jvm_null? (~ obj)))))))
 

@@ -1,4 +1,4 @@
-(defproject lux/stdlib "0.3.0"
+(defproject lux/stdlib "0.4.0"
   :description "Standard library for the Lux family of programming languages."
   :url "https://github.com/LuxLang/stdlib"
   :license {:name "Mozilla Public License (Version 2.0)"

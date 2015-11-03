@@ -108,3 +108,16 @@
        _xs (map% monad f xs')]
       (wrap (#;Cons _x _xs)))
     ))
+
+(def #export (foldL% monad f init xs)
+  (All [M a b]
+    (-> (Monad M) (-> a b (M a)) a (List b)
+        (M a)))
+  (case xs
+    #;Nil
+    (:: monad (wrap init))
+
+    (#;Cons x xs')
+    (do monad
+      [init' (f init x)]
+      (foldL% monad f init' xs'))))

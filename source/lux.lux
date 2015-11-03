@@ -135,29 +135,6 @@
 (_lux_export Bindings)
 (_lux_declare-tags [#counter #mappings] Bindings)
 
-## (deftype (Env k v)
-##   (& #name Text
-##      #inner-closures Int
-##      #locals  (Bindings k v)
-##      #closure (Bindings k v)))
-(_lux_def Env
-  (#NamedT ["lux" "Env"]
-           (#UnivQ #Nil
-                   (#UnivQ #Nil
-                           (#TupleT (#Cons ## "lux;name"
-                                     Text
-                                     (#Cons ## "lux;inner-closures"
-                                      Int
-                                      (#Cons ## "lux;locals"
-                                       (#AppT (#AppT Bindings (#BoundT 3))
-                                              (#BoundT 1))
-                                       (#Cons ## "lux;closure"
-                                        (#AppT (#AppT Bindings (#BoundT 3))
-                                               (#BoundT 1))
-                                        #Nil)))))))))
-(_lux_export Env)
-(_lux_declare-tags [#name #inner-closures #locals #closure] Env)
-
 ## (deftype Cursor
 ##   (& #module Text
 ##      #line   Int
@@ -180,6 +157,32 @@
                                                   #Nil)))))))
 (_lux_export Meta)
 (_lux_declare-tags [#meta #datum] Meta)
+
+(_lux_def Analysis
+  (#NamedT ["lux" "Analysis"]
+           (#AppT (#AppT Meta
+                         (#TupleT (#Cons Type (#Cons Cursor #Nil))))
+                  Void)))
+(_lux_export Analysis)
+
+## (deftype Env
+##   (& #name Text
+##      #inner-closures Int
+##      #locals  (Bindings Text Analysis)
+##      #closure (Bindings Text Analysis)))
+(_lux_def Env
+  (#NamedT ["lux" "Env"]
+           (#TupleT (#Cons ## "lux;name"
+                     Text
+                     (#Cons ## "lux;inner-closures"
+                      Int
+                      (#Cons ## "lux;locals"
+                       (#AppT (#AppT Bindings Text) Analysis)
+                       (#Cons ## "lux;closure"
+                        (#AppT (#AppT Bindings Text) Analysis)
+                        #Nil)))))))
+(_lux_export Env)
+(_lux_declare-tags [#name #inner-closures #locals #closure] Env)
 
 ## (deftype (AST' w)
 ##   (| (#BoolS Bool)
@@ -292,11 +295,6 @@
                                   #Nil))))))))
 (_lux_export DefData')
 
-(_lux_def Analysis
-  (#NamedT ["lux" "Analysis"]
-           Void))
-(_lux_export Analysis)
-
 ## (deftype (Module Compiler)
 ##   (& #module-aliases (List (, Text Text))
 ##      #defs           (List (, Text (, Bool (DefData' (-> (List AST) (StateE Compiler (List AST)))))))
@@ -341,8 +339,8 @@
 ##   (& #source       Source
 ##      #cursor       Cursor
 ##      #modules      (List (, Text (Module Compiler)))
-##      #envs         (List (Env Text (Meta (, Type Cursor) Analysis)))
-##      #type-vars   (Bindings Int Type)
+##      #envs         (List Env)
+##      #type-vars    (Bindings Int Type)
 ##      #expected     Type
 ##      #seed         Int
 ##      #eval?        Bool
@@ -360,10 +358,7 @@
                                                                   (#Cons (#AppT Module (#AppT (#BoundT 0) (#BoundT 1)))
                                                                          #Nil))))
                                       (#Cons ## "lux;envs"
-                                       (#AppT List (#AppT (#AppT Env Text)
-                                                          (#AppT (#AppT Meta
-                                                                        (#TupleT (#Cons Type (#Cons Cursor #Nil))))
-                                                                 Analysis)))
+                                       (#AppT List Env)
                                        (#Cons ## "lux;type-vars"
                                         (#AppT (#AppT Bindings Int) Type)
                                         (#Cons ## "lux;expected"
@@ -2764,7 +2759,7 @@
      #envs   envs   #type-vars   types   #host           host
      #seed   seed   #eval? eval? #expected expected
      #cursor cursor}
-    (some (: (-> (Env Text (Meta (, Type Cursor) Analysis)) (Maybe Type))
+    (some (: (-> Env (Maybe Type))
              (lambda [env]
                (case env
                  {#name _ #inner-closures _ #locals {#counter _ #mappings locals} #closure {#counter _ #mappings closure}}

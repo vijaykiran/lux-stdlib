@@ -102,6 +102,6 @@
                           #;None))))
 
 ## [Functions]
-(def #export (int->real n)
+(def #export (->real n)
   (-> Int Real)
   (_jvm_l2d n))
