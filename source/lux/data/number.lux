@@ -13,7 +13,6 @@
                       (show #as S)
                       (read #as R)))
 
-## [Exports]
 ## [Structures]
 ## Number
 (do-template [<name> <type> <+> <-> <*> </> <%> <=> <<> <from> <0> <1> <-1>]
@@ -38,11 +37,17 @@
              <1>))
      )]
 
+  [ Int/Number  Int _jvm_ladd _jvm_lsub _jvm_lmul _jvm_ldiv _jvm_lrem _jvm_leq _jvm_llt id       0   1   -1]
   [Real/Number Real _jvm_dadd _jvm_dsub _jvm_dmul _jvm_ddiv _jvm_drem _jvm_deq _jvm_dlt _jvm_l2d 0.0 1.0 -1.0])
 
 ## Eq
-(defstruct #export Real/Eq (E;Eq Real)
-  (def (= x y) (_jvm_deq x y)))
+(do-template [<name> <type> <test>]
+  [(defstruct #export <name> (E;Eq <type>)
+     (def (= x y) (<test> x y)))]
+
+  [ Int/Eq  Int _jvm_leq]
+  [Real/Eq Real _jvm_deq]
+  )
 
 ## Ord
 (do-template [<name> <type> <eq> <=> <lt> <gt>]
@@ -57,13 +62,19 @@
        (or (<gt> x y)
            (<=> x y))))]
 
+  [ Int/Ord  Int  Int/Eq _jvm_leq _jvm_llt _jvm_lgt]
   [Real/Ord Real Real/Eq _jvm_deq _jvm_dlt _jvm_dgt])
 
 ## Enum
-(defstruct Real/Enum (EN;Enum Real)
-  (def _ord Real/Ord)
-  (def succ (lambda [n] (:: Real/Number (+ n 1.0))))
-  (def pred (lambda [n] (:: Real/Number (- n 1.0)))))
+(do-template [<name> <type> <ord> <number> <one>]
+  [(defstruct #export <name> (EN;Enum <type>)
+     (def _ord <ord>)
+     (def succ (lambda [n] (:: <number> (+ n <one>))))
+     (def pred (lambda [n] (:: <number> (- n <one>)))))]
+
+  [ Int/Enum  Int  Int/Ord  Int/Number 1]
+  [Real/Enum Real Real/Ord Real/Number 1.0]
+  )
 
 ## Bounded
 (do-template [<name> <type> <top> <bottom>]
@@ -71,6 +82,7 @@
      (def top <top>)
      (def bottom <bottom>))]
 
+  [ Int/Bounded  Int (_jvm_getstatic "java.lang.Long"   "MAX_VALUE") (_jvm_getstatic "java.lang.Long"   "MIN_VALUE")]
   [Real/Bounded Real (_jvm_getstatic "java.lang.Double" "MAX_VALUE") (_jvm_getstatic "java.lang.Double" "MIN_VALUE")])
 
 ## Monoid
@@ -79,8 +91,12 @@
      (def unit <unit>)
      (def (++ x y) (<++> x y)))]
 
-  [RealAdd/Monoid Real 0.0 _jvm_dadd]
-  [RealMul/Monoid Real 1.0 _jvm_dmul]
+  [ IntAdd/Monoid  Int 0                         _jvm_ladd]
+  [ IntMul/Monoid  Int 1                         _jvm_lmul]
+  [ IntMax/Monoid  Int (::  Int/Bounded bottom)  (O;max Int/Ord)]
+  [ IntMin/Monoid  Int (::  Int/Bounded top)     (O;min Int/Ord)]
+  [RealAdd/Monoid Real 0.0                       _jvm_dadd]
+  [RealMul/Monoid Real 1.0                       _jvm_dmul]
   [RealMax/Monoid Real (:: Real/Bounded bottom)  (O;max Real/Ord)]
   [RealMin/Monoid Real (:: Real/Bounded top)     (O;min Real/Ord)]
   )
@@ -91,17 +107,28 @@
      (def (show x)
        <body>))]
 
+  [ Int/Show  Int (_jvm_invokevirtual ("java.lang.Object" []) "toString" [] x [])]
   [Real/Show Real (_jvm_invokevirtual ("java.lang.Object" []) "toString" [] x [])]
   )
 
 ## Read
-(defstruct #export Real/Read (R;Read Real)
-  (def (read input)
-    (_jvm_try (#;Some (_jvm_invokestatic ("java.lang.Double" []) "parseDouble" ["java.lang.String"] [input]))
-              (_jvm_catch "java.lang.Exception" e
-                          #;None))))
+(do-template [<name> <type> <class> <method>]
+  [(defstruct #export <name> (R;Read <type>)
+     (def (read input)
+       (_jvm_try (#;Some (_jvm_invokestatic (<class> []) <method> ["java.lang.String"] [input]))
+                 (_jvm_catch "java.lang.Exception" e
+                             #;None))))]
+
+  [ Int/Read  Int "java.lang.Long"   "parseLong"]
+  [Real/Read Real "java.lang.Double" "parseDouble"]
+  )
 
 ## [Functions]
-(def #export (->real n)
-  (-> Int Real)
-  (_jvm_l2d n))
+(do-template [<name> <from> <to> <converter>]
+  [(def #export (<name> n)
+     (-> <from> <to>)
+     (<converter> n))]
+
+  [->int  Real Int  _jvm_d2l]
+  [->real Int  Real _jvm_l2d]
+  )

@@ -13,8 +13,7 @@
                     (char #as c)
                     (text #as t #open ("text:" Text/Monoid Text/Eq))
                     (list #refer #all #open ("" List/Functor List/Fold))
-                    (number (int #open ("i" Int/Ord))
-                            (real #open ("r" Real/Eq))))))
+                    (number #open ("i:" Int/Ord "r:" Real/Eq)))))
 
 ## [Utils]
 (def (first xy)
@@ -98,7 +97,7 @@
   (Parser Int)
   (do Parser/Monad
     [n int^
-     _ (assert (i>= n 0))]
+     _ (assert (i:>= n 0))]
     (wrap n)))
 
 (do-template [<name> <tag>]
@@ -133,8 +132,8 @@
        (#;Some [tokens false])))]
 
   [  bool?^ Bool    #;BoolS  (:: b;Bool/Eq =)]
-  [   int?^ Int      #;IntS  i=]
-  [  real?^ Real    #;RealS  r=]
+  [   int?^ Int      #;IntS  i:=]
+  [  real?^ Real    #;RealS  r:=]
   [  char?^ Char    #;CharS  (:: c;Char/Eq =)]
   [  text?^ Text    #;TextS  (:: t;Text/Eq =)]
   [symbol?^ Ident #;SymbolS ident:=]
@@ -154,8 +153,8 @@
        #;None))]
 
   [  bool!^ Bool    #;BoolS  (:: b;Bool/Eq =)]
-  [   int!^ Int      #;IntS  i=]
-  [  real!^ Real    #;RealS  r=]
+  [   int!^ Int      #;IntS  i:=]
+  [  real!^ Real    #;RealS  r:=]
   [  char!^ Char    #;CharS  (:: c;Char/Eq =)]
   [  text!^ Text    #;TextS  (:: t;Text/Eq =)]
   [symbol!^ Ident #;SymbolS ident:=]

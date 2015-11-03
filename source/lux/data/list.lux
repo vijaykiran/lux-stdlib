@@ -10,7 +10,7 @@
                        (eq #as E)
                        (ord #as O)
                        (fold #as f))
-              (data (number (int #open ("i:" Int/Number Int/Ord Int/Show)))
+              (data (number #open ("i:" Int/Number Int/Ord Int/Show))
                     bool
                     (text #open ("text:" Text/Monoid))
                     tuple)

@@ -7,8 +7,7 @@
          (lux (control (show #as S #refer #all)
                        (eq #as E #refer #all))
               (data bool
-                    (number int
-                            real)
+                    number
                     char
                     (text #refer (#only Text/Show Text/Eq) #open ("text:" Text/Monoid))
                     ident

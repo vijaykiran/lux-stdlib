@@ -9,12 +9,10 @@
                        monad)
               (data (char #as c)
                     (text #as t #open ("text:" Text/Monoid Text/Eq))
-                    (number/int #open ("int:" Int/Number Int/Ord Int/Show))
+                    (number/int #open ("i:" Int/Number Int/Ord Int/Show))
                     maybe
                     (list #refer #all #open ("list:" List/Monad List/Monoid List/Fold)))
               ))
-
-(open List/Fold)
 
 ## [Utils]
 (def (unravel-fun type)
@@ -55,7 +53,7 @@
         "(,)"
 
         _
-        ($ text:++ "(, " (|> members (list:map show) (interpose " ") (foldL text:++ "")) ")"))
+        ($ text:++ "(, " (|> members (list:map show) (interpose " ") (list:foldL text:++ "")) ")"))
 
       (#;VariantT members)
       (case members
@@ -63,24 +61,24 @@
         "(|)"
 
         _
-        ($ text:++ "(| " (|> members (list:map show) (interpose " ") (foldL text:++ "")) ")"))
+        ($ text:++ "(| " (|> members (list:map show) (interpose " ") (list:foldL text:++ "")) ")"))
 
       (#;LambdaT input output)
       (let [[out ins] (unravel-fun type)]
-        ($ text:++  "(-> " (|> ins (list:map show) (interpose " ") (foldL text:++ "")) " " (show out) ")"))
+        ($ text:++  "(-> " (|> ins (list:map show) (interpose " ") (list:foldL text:++ "")) " " (show out) ")"))
 
       (#;VarT id)
-      ($ text:++ "⌈" (int:show id) "⌋")
+      ($ text:++ "⌈" (i:show id) "⌋")
 
       (#;BoundT idx)
-      (int:show idx)
+      (i:show idx)
 
       (#;ExT id)
-      ($ text:++ "⟨" (int:show id) "⟩")
+      ($ text:++ "⟨" (i:show id) "⟩")
 
       (#;AppT fun param)
       (let [[type-fun type-args] (unravel-app type)]
-        ($ text:++  "(" (show type-fun) " " (|> type-args (list:map show) (interpose " ") (foldL text:++ "")) ")"))
+        ($ text:++  "(" (show type-fun) " " (|> type-args (list:map show) (interpose " ") (list:foldL text:++ "")) ")"))
 
       (#;UnivQ env body)
       ($ text:++ "(All " (show body) ")")
@@ -97,16 +95,16 @@
     (case [x y]
       [(#;DataT xname xparams) (#;DataT yname yparams)]
       (and (text:= xname yname)
-           (int:= (size xparams) (size yparams))
-           (foldL (lambda [prev [x y]]
-                    (and prev (= x y)))
-                  true
-                  (zip2 xparams yparams)))
+           (i:= (size xparams) (size yparams))
+           (list:foldL (lambda [prev [x y]]
+                         (and prev (= x y)))
+                       true
+                       (zip2 xparams yparams)))
 
       (\or [(#;VarT xid) (#;VarT yid)]
        [(#;ExT xid) (#;ExT yid)]
        [(#;BoundT xid) (#;BoundT yid)])
-      (int:= xid yid)
+      (i:= xid yid)
 
       (\or [(#;LambdaT xleft xright) (#;LambdaT yleft yright)]
        [(#;AppT xleft xright) (#;AppT yleft yright)])
@@ -120,19 +118,19 @@
 
       (\or [(#;TupleT xmembers) (#;TupleT ymembers)]
        [(#;VariantT xmembers) (#;VariantT ymembers)])
-      (and (int:= (size xmembers) (size ymembers))
-           (foldL (lambda [prev [x y]]
-                    (and prev (= x y)))
-                  true
-                  (zip2 xmembers ymembers)))
+      (and (i:= (size xmembers) (size ymembers))
+           (list:foldL (lambda [prev [x y]]
+                         (and prev (= x y)))
+                       true
+                       (zip2 xmembers ymembers)))
 
       (\or [(#;UnivQ xenv xbody) (#;UnivQ yenv ybody)]
        [(#;ExQ xenv xbody) (#;ExQ yenv ybody)])
-      (and (int:= (size xenv) (size yenv))
-           (foldL (lambda [prev [x y]]
-                    (and prev (= x y)))
-                  (= xbody ybody)
-                  (zip2 xenv yenv)))
+      (and (i:= (size xenv) (size yenv))
+           (list:foldL (lambda [prev [x y]]
+                         (and prev (= x y)))
+                       (= xbody ybody)
+                       (zip2 xenv yenv)))
 
       _
       false

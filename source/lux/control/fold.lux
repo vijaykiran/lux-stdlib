@@ -6,7 +6,7 @@
 (;import lux
          (lux (control monoid
                        eq)
-              (data/number/int #open ("i" Int/Number Int/Eq))))
+              (data/number #open ("i:" Int/Number Int/Eq))))
 
 ## [Signatures]
 (defsig #export (Fold F)
@@ -26,7 +26,7 @@
 (def #export (size fold xs)
   (All [F a] (-> (Fold F) (F a) Int))
   (using fold
-    (foldL (lambda [count _] (i+ 1 count))
+    (foldL (lambda [count _] (i:+ 1 count))
            0
            xs)))
 
@@ -39,4 +39,4 @@
 
 (def #export (empty? fold xs)
   (All [F a] (-> (Fold F) (F a) Bool))
-  (i= 0 (size fold xs)))
+  (i:= 0 (size fold xs)))

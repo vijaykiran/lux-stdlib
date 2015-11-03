@@ -11,7 +11,7 @@
               (codata function)
               (data (list #refer #all #open ("" List/Functor List/Fold
                                              "list:" List/Monad))
-                    (number/int #refer #all #open ("i:" Int/Ord Int/Number))
+                    (number #refer #all #open ("i:" Int/Ord Int/Number))
                     maybe
                     tuple
                     (text #refer (#only <>) #open ("text:" Text/Monoid Text/Eq)))

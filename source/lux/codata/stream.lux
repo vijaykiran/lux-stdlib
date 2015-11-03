@@ -9,12 +9,11 @@
                        (comonad #as CM #refer #all))
               (meta lux
                     syntax)
-              (data (list #as l #refer (#only @list @list& List/Monad) #open ("" List/Fold))
-                    (number (int #open ("i" Int/Number Int/Ord)))
+              (data (list #as l #refer (#only @list @list& List/Monad) #open ("" List/Fold
+                                                                              "list:" List/Monad))
+                    (number #open ("i:" Int/Number Int/Ord))
                     bool)
               (codata (lazy #as L #refer #all))))
-
-(open List/Monad "list:")
 
 ## [Types]
 (deftype #export (Stream a)
@@ -58,8 +57,8 @@
 (def #export (@ idx s)
   (All [a] (-> Int (Stream a) a))
   (let [[h t] (! s)]
-    (if (i> idx 0)
-      (@ (i+ -1 idx) t)
+    (if (i:> idx 0)
+      (@ (i:+ -1 idx) t)
       h)))
 
 (do-template [<taker> <dropper> <splitter> <det-type> <det-test> <det-step>]
@@ -89,7 +88,7 @@
          [(@list) xs])))]
   
   [take-while drop-while split-with (-> a Bool) (det x)    det]
-  [take       drop       split      Int         (i> det 0) (i+ -1 det)]
+  [take       drop       split      Int         (i:> det 0) (i:+ -1 det)]
   )
 
 (def #export (unfold step init)

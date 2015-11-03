@@ -11,7 +11,7 @@
                       (show #as S))
          (lux/data (list #refer #all #open ("list:" List/Monoid List/Functor))
                    (text #as T #open ("text:" Text/Monoid Text/Eq))
-                   (number/int #as I #open ("i" Int/Number))
+                   (number #as N #open ("i:" Int/Number))
                    (tuple #as t)
                    ident))
 
@@ -189,8 +189,8 @@
 
 (def #export (gensym prefix state)
   (-> Text (Lux AST))
-  (#;Right [(update@ #;seed (i+ 1) state)
-            (symbol$ ["" ($ text:++ "__gensym__" prefix (:: I;Int/Show (show (get@ #;seed state))))])]))
+  (#;Right [(update@ #;seed (i:+ 1) state)
+            (symbol$ ["" ($ text:++ "__gensym__" prefix (:: N;Int/Show (show (get@ #;seed state))))])]))
 
 (def #export (fail msg)
   (All [a]
